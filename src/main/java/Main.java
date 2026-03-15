@@ -1,3 +1,5 @@
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.JsonValue;
@@ -5,10 +7,15 @@ import com.openai.models.FunctionDefinition;
 import com.openai.models.FunctionParameters;
 import com.openai.models.chat.completions.ChatCompletion;
 import com.openai.models.chat.completions.ChatCompletionCreateParams;
+import com.openai.models.chat.completions.ChatCompletionMessageToolCall;
 import com.openai.models.chat.completions.ChatCompletionTool;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public class Main {
     public static void main(String[] args) {
@@ -49,8 +56,47 @@ public class Main {
         // You can use print statements as follows for debugging, they'll be visible when running tests.
         System.err.println("Logs from your program will appear here!");
 
-        // TODO: Uncomment the line below to pass the first stage
-         System.out.print(response.choices().get(0).message().content().orElse(""));
+        ChatCompletion.Choice choice = response.choices().get(0);
+        Optional<List<ChatCompletionMessageToolCall>> toolCalls = choice.message().toolCalls();
+        if (toolCalls.isEmpty()) {
+            System.out.print(choice.message().content().orElse(""));
+        } else {
+            parseTools(toolCalls.get());
+        }
+
+           // TODO: Uncomment the line below to pass the first stage
+//         System.out.print(response.choices().get(0).message().content().orElse(""));
+    }
+
+    static void parseTools(List<ChatCompletionMessageToolCall> toolCalls) {
+        ChatCompletionMessageToolCall toolCall = toolCalls.getFirst();
+        String functionName = toolCall.function().name();
+
+        if (functionName.equals("Read")) {
+            execute(toolCall.function().arguments());
+        } else {
+            throw new RuntimeException("Unknown function: " + functionName);
+        }
+    }
+
+    static void execute(String arguments) {
+        JsonNode argsNode;
+        ObjectMapper mapper = new ObjectMapper();
+
+        try {
+            argsNode = mapper.readTree(arguments);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to parse function arguments: ", e);
+        }
+
+        String filePath = argsNode.get("file_path").asText();
+        File objectFile = new File(filePath);
+        try {
+            String fileContent = Files.readString(objectFile.toPath());
+            System.out.println(fileContent);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private static List<ChatCompletionTool> getAvailableTools() {
