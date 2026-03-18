@@ -60,7 +60,7 @@ public class Main {
             parseTools(toolCalls.get());
         }
 
-        runLoop(client, prompt, paramBuilder);
+        runLoop(client, paramBuilder);
 
            // TODO: Uncomment the line below to pass the first stage
 //         System.out.print(response.choices().get(0).message().content().orElse(""));
@@ -132,7 +132,7 @@ public class Main {
         return List.of(readTool);
     }
 
-    private static void runLoop(OpenAIClient client, String prompt, ChatCompletionCreateParams.Builder parambuilder) {
+    private static void runLoop(OpenAIClient client, ChatCompletionCreateParams.Builder parambuilder) {
         while (true) {
             ChatCompletion response = client.chat().completions().create(parambuilder.build());
 
