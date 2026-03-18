@@ -5,10 +5,7 @@ import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.JsonValue;
 import com.openai.models.FunctionDefinition;
 import com.openai.models.FunctionParameters;
-import com.openai.models.chat.completions.ChatCompletion;
-import com.openai.models.chat.completions.ChatCompletionCreateParams;
-import com.openai.models.chat.completions.ChatCompletionMessageToolCall;
-import com.openai.models.chat.completions.ChatCompletionTool;
+import com.openai.models.chat.completions.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -41,14 +38,13 @@ public class Main {
                 .baseUrl(baseUrl)
                 .build();
 
-        ChatCompletion response = client.chat().completions().create(
+        var paramBuilder =
                 ChatCompletionCreateParams.builder()
                         .model("anthropic/claude-haiku-4.5")
                         .addUserMessage(prompt)
-                        .tools(getAvailableTools())
-                        .build()
-        );
+                        .tools(getAvailableTools());
 
+        ChatCompletion response = client.chat().completions().create(paramBuilder.build());
         if (response.choices().isEmpty()) {
             throw new RuntimeException("no choices in response");
         }
@@ -63,6 +59,8 @@ public class Main {
         } else {
             parseTools(toolCalls.get());
         }
+
+        runLoop(client, prompt, paramBuilder);
 
            // TODO: Uncomment the line below to pass the first stage
 //         System.out.print(response.choices().get(0).message().content().orElse(""));
@@ -79,7 +77,16 @@ public class Main {
         }
     }
 
-    static void execute(String arguments) {
+    private static String handleToolExecution(ChatCompletionMessageToolCall toolCall) {
+        String functionName = toolCall.function().name();
+
+        if (functionName.equals("Read")) {
+            return execute(toolCall.function().arguments());
+        }
+        return "Error: Unknown function: " + functionName;
+    }
+
+    static String execute(String arguments) {
         JsonNode argsNode;
         ObjectMapper mapper = new ObjectMapper();
 
@@ -92,10 +99,9 @@ public class Main {
         String filePath = argsNode.get("file_path").asText();
         File objectFile = new File(filePath);
         try {
-            String fileContent = Files.readString(objectFile.toPath());
-            System.out.println(fileContent);
+            return Files.readString(objectFile.toPath());
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            return "Error reading file: " + e.getMessage();
         }
     }
 
@@ -124,5 +130,37 @@ public class Main {
                         .build();
 
         return List.of(readTool);
+    }
+
+    private static void runLoop(OpenAIClient client, String prompt, ChatCompletionCreateParams.Builder parambuilder) {
+        while (true) {
+            ChatCompletion response = client.chat().completions().create(parambuilder.build());
+
+            if (response.choices().isEmpty()) {
+                throw new RuntimeException("no choices in response");
+            }
+            var choice = response.choices().getFirst();
+            var assistantMessage = choice.message();
+            parambuilder.addMessage(assistantMessage);
+            var toolsOpt = assistantMessage.toolCalls();
+
+            if (toolsOpt.isPresent() && !toolsOpt.get().isEmpty()) {
+                var toolCalls = toolsOpt.get();
+
+                for (var toolCall : toolCalls) {
+                    var result = handleToolExecution(toolCall);
+                    var toolResponseMessage =
+                            ChatCompletionMessageParam.ofTool(
+                                    ChatCompletionToolMessageParam.builder()
+                                            .toolCallId(toolCall.id())
+                                            .content(result)
+                                            .build());
+                    parambuilder.addMessage(toolResponseMessage);
+                }
+            } else {
+                System.out.print(assistantMessage.content().orElse(""));
+                break;
+            }
+        }
     }
 }
