@@ -130,7 +130,7 @@ public class Main {
                 Files.createDirectories(parent);
             }
             Files.writeString(path, content);
-            return "Success: wrote file " + filePath;
+            return "Created the file";
         } catch (IOException e) {
             return "Error writing file: " + e.getMessage();
         }
