@@ -10,9 +10,9 @@ import com.openai.models.chat.completions.*;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 public class Main {
     public static void main(String[] args) {
@@ -42,7 +42,8 @@ public class Main {
                 ChatCompletionCreateParams.builder()
                         .model("anthropic/claude-haiku-4.5")
                         .addUserMessage(prompt)
-                        .tools(getAvailableTools());
+                        .addTool(getReadTool())
+                        .addTool(getWriteTool());
 
         ChatCompletion response = client.chat().completions().create(paramBuilder.build());
         if (response.choices().isEmpty()) {
@@ -71,7 +72,9 @@ public class Main {
         String functionName = toolCall.function().name();
 
         if (functionName.equals("Read")) {
-            execute(toolCall.function().arguments());
+            executeRead(toolCall.function().arguments());
+        } else if (functionName.equals("Write")) {
+            executeWrite(toolCall.function().arguments());
         } else {
             throw new RuntimeException("Unknown function: " + functionName);
         }
@@ -81,12 +84,14 @@ public class Main {
         String functionName = toolCall.function().name();
 
         if (functionName.equals("Read")) {
-            return execute(toolCall.function().arguments());
+            return executeRead(toolCall.function().arguments());
+        } else if (functionName.equals("Write")) {
+            return executeWrite(toolCall.function().arguments());
         }
         return "Error: Unknown function: " + functionName;
     }
 
-    static String execute(String arguments) {
+    static String executeRead(String arguments) {
         JsonNode argsNode;
         ObjectMapper mapper = new ObjectMapper();
 
@@ -105,7 +110,33 @@ public class Main {
         }
     }
 
-    private static List<ChatCompletionTool> getAvailableTools() {
+    static String executeWrite(String arguments) {
+        JsonNode argsNode;
+        ObjectMapper mapper = new ObjectMapper();
+
+        try {
+            argsNode = mapper.readTree(arguments);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to parse function arguments: ", e);
+        }
+
+        String filePath = argsNode.get("file_path").asText();
+        String content = argsNode.get("content").asText();
+        Path path = Path.of(filePath);
+
+        try {
+            Path parent = path.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            Files.writeString(path, content);
+            return "Success: wrote file " + filePath;
+        } catch (IOException e) {
+            return "Error writing file: " + e.getMessage();
+        }
+    }
+
+    private static ChatCompletionTool getReadTool() {
         var readParameters =
                 FunctionParameters.builder()
                         .putAdditionalProperty("type", JsonValue.from("object"))
@@ -118,18 +149,43 @@ public class Main {
                                                         "description", "The path to the file to read, relative to the current directory."))))
                         .build();
 
-        var readTool =
-                ChatCompletionTool.builder()
-                        .type(JsonValue.from("function"))
-                        .function(
-                                FunctionDefinition.builder()
-                                        .name("Read")
-                                        .description("Read and return the contents of a file")
-                                        .parameters(readParameters)
-                                        .build())
+        return ChatCompletionTool.builder()
+                .type(JsonValue.from("function"))
+                .function(
+                        FunctionDefinition.builder()
+                                .name("Read")
+                                .description("Read and return the contents of a file")
+                                .parameters(readParameters)
+                                .build())
+                .build();
+    }
+
+    private static ChatCompletionTool getWriteTool() {
+        var writeParameters =
+                FunctionParameters.builder()
+                        .putAdditionalProperty("type", JsonValue.from("object"))
+                        .putAdditionalProperty("properties",
+                                JsonValue.from(
+                                        Map.of(
+                                                "file_path",
+                                                Map.of(
+                                                        "type", "string",
+                                                        "description", "The path to the file to write, relative to the current directory."),
+                                                "content",
+                                                Map.of(
+                                                        "type", "string",
+                                                        "description", "The content to write to the file."))))
                         .build();
 
-        return List.of(readTool);
+        return ChatCompletionTool.builder()
+                .type(JsonValue.from("function"))
+                .function(
+                        FunctionDefinition.builder()
+                                .name("Write")
+                                .description("Write content to a file")
+                                .parameters(writeParameters)
+                                .build())
+                .build();
     }
 
     private static void runLoop(OpenAIClient client, ChatCompletionCreateParams.Builder parambuilder) {
