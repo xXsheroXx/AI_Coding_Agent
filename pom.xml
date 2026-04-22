@@ -21,6 +21,14 @@
             <artifactId>openai-java</artifactId>
             <version>0.36.0</version>
         </dependency>
+
+        <!-- pom.xml -->
+        <dependency>
+            <groupId>io.github.cdimascio</groupId>
+            <artifactId>dotenv-java</artifactId>
+            <version>3.2.0</version>
+        </dependency>
+
     </dependencies>
 
     <build>

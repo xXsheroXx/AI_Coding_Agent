@@ -6,6 +6,7 @@ import com.openai.core.JsonValue;
 import com.openai.models.FunctionDefinition;
 import com.openai.models.FunctionParameters;
 import com.openai.models.chat.completions.*;
+import io.github.cdimascio.dotenv.Dotenv;
 
 import java.io.File;
 import java.io.IOException;
@@ -23,8 +24,14 @@ public class Main {
 
         String prompt = args[1];
 
-        String apiKey = System.getenv("OPENROUTER_API_KEY");
-        String baseUrl = System.getenv("OPENROUTER_BASE_URL");
+//        String apiKey = System.getenv("OPENROUTER_API_KEY");
+//        String baseUrl = System.getenv("OPENROUTER_BASE_URL");
+        Dotenv dotenv = Dotenv.configure()
+                .ignoreIfMissing()
+                .load();
+        String apiKey = dotenv.get("OPENROUTER_API_KEY");
+        String baseUrl = dotenv.get("OPENROUTER_BASE_URL");
+
         if (baseUrl == null || baseUrl.isEmpty()) {
             baseUrl = "https://openrouter.ai/api/v1";
         }
@@ -110,6 +117,7 @@ public class Main {
         }
     }
 
+    //Execute the Write function by parsing the arguments and writing the content to the specified file path. If the file or directories do not exist, they will be created.
     static String executeWrite(String arguments) {
         JsonNode argsNode;
         ObjectMapper mapper = new ObjectMapper();
